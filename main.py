@@ -36,21 +36,42 @@ df = df.sort_values(by='Categoria')
 https://www.isprambiente.gov.it/files2025/pubblicazioni/rapporti/r413-2025_def.pdf#page=15.26
 
 I dati presi in considerazione sono i fattori di emissione (FE) di consumo regionali del 2023:
-- Media italiana 234.7 gCO2/kWh
-- Lombardia 202.2 gCO2/kWh
-- Lazio 291.2 gCO2/kWh
-Per Lione considero la media francese di 52 gCO2/kWh (valore ADEME)
+- Media italiana 0.234 kgCO2/kWh
+- Lombardia 0.202 kgCO2/kWh
+- Lazio 0.291 kgCO2/kWh
+Per Lione considero la media francese di 0.052 kgCO2/kWh (valore ADEME)
 
-Per il gasolio considero il fattore di emissione riportato nel link sotto, ovvero 2.7 kgCO2/litro
+Per il gasolio considero il fattore di emissione riportato nel link sotto, ovvero 2.620 kgCO2/litro
 https://natural-resources.canada.ca/sites/nrcan/files/oee/pdf/transportation/fuel-efficient-technologies/autosmart_factsheet_9_e.pdf
 
 Per il gas naturale (metano) considero i fattori di emissione dei coefficienti standard nazionali, 
-pari a 2,019 tCO2/1000stdm3 --> 2,019 gCO2/sm3
+pari a 2,019 tCO2/1000stdm3 --> 0.002 kgCO2/sm3
 https://www.ets.minambiente.it/Download/237/Tabella%20coefficienti%20standard%20nazionali%202021-2023_v1.pdf
 '''
-fattori_emissione = {'en_italia': 234.7,
-                     'en_lombardia': 202.2,
-                     'en_lazio': 291.2,
-                     'en_francia': 52,
-                     'gasolio': 2700,
-                     'metano': 2.019}
+
+# CREO UN DATAFRAME CON I FATTORI DI EMISSIONE (kgCO2)
+
+fattori_emissione = pd.DataFrame([{'Risorsa': 'Elettricità', 'Città': 'Milano', 'Fattore emissione (kgCO2)': 0.202},
+                                  {'Risorsa': 'Elettricità', 'Città': 'Roma',
+                                   'Fattore emissione (kgCO2)': 0.291},
+                                  {'Risorsa': 'Elettricità', 'Città': 'Lione',
+                                   'Fattore emissione (kgCO2)': 0.052},
+                                  {'Risorsa': 'Gas Naturale', 'Città': 'Milano',
+                                   'Fattore emissione (kgCO2)': 0.002},
+                                  {'Risorsa': 'Gas Naturale', 'Città': 'Roma',
+                                   'Fattore emissione (kgCO2)': 0.002},
+                                  {'Risorsa': 'Gas Naturale', 'Città': 'Lione',
+                                   'Fattore emissione (kgCO2)': 0.002},
+                                  {'Risorsa': 'Gasolio', 'Città': 'Milano',
+                                   'Fattore emissione (kgCO2)': 2.620},
+                                  {'Risorsa': 'Gasolio', 'Città': 'Roma',
+                                   'Fattore emissione (kgCO2)': 2.620},
+                                  {'Risorsa': 'Gasolio', 'Città': 'Lione', 'Fattore emissione (kgCO2)': 2.620}])
+
+# AGGIUNGO FATTORI DI EMISSIONE AL DATAFRAME
+df = pd.merge(df, fattori_emissione)
+
+# CALCOLO EMISSIONI
+df['Emissioni (kgCO2)'] = (
+    df['Quantità']*df['Fattore emissione (kgCO2)']).round(decimals=2)
+print(df)
