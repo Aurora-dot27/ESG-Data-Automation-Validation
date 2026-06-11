@@ -1,4 +1,3 @@
-
 # Dizionari di standardizzazione
 
 mappa_categorie = {
@@ -111,4 +110,29 @@ lookup_categoria = {
     # Elettricità → Energia o Raffreddamento → ambiguo
     # Gas Naturale → Riscaldamento o Flotta aziendale → ambiguo
     # Gasolio → Riscaldamento o Flotta aziendale → ambiguo
+}
+
+
+emission_factors = {
+    'Elettricità':            None,    # gestito separatamente per nazione
+    # kg CO2eq/kWh — IPCC AR6 / GHG Protocol (combustione)
+    'Gas Naturale':           0.202,
+    'Gasolio':                0.267,   # kg CO2eq/kWh — GHG Protocol / DEFRA 2024
+    # kg CO2eq/kWh — ISPRA: neutro per convenzione (ciclo chiuso CO2)
+    'Biomassa':               0.0,
+    'Benzina':                0.249,   # kg CO2eq/kWh — GHG Protocol / DEFRA 2024
+    # kg CO2eq/kg — GWP100 IPCC AR5 (AR4 = stesso valore)
+    'Gas refrigerante R410A': 2088.0,
+    # kg CO2eq/m³ — DEFRA 2024 (water supply)
+    'Acqua di rete':          0.149,
+    # kg CO2eq/kg — DEFRA 2024 (average landfill)
+    'Rifiuti speciali':       0.616,
+    # kg CO2eq/kg — DEFRA 2024 (municipal solid waste)
+    'Rifiuti urbani':         0.467
+}
+
+emission_factors_electricity = {
+    'Milano': 0.233,
+    'Roma': 0.233,
+    'Lione': 0.052
 }
