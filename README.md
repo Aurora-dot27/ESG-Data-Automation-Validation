@@ -1,53 +1,102 @@
-# Automated Corporate Sustainability & GHG Accounting Pipeline
+# ESG Data Automation — GHG Emissions Reporting
 
-This repository contains a professional-grade development sandbox that simulates the end-to-end data pipeline of a corporate sustainability analyst or ESG consultant. It serves as a practical demonstration of scalable data engineering practices applied to environmental compliance and carbon accounting. 
+A Python data pipeline that ingests raw energy consumption files from multiple production facilities, validates and cleans the data, computes greenhouse gas (GHG) emissions per the GHG Protocol, and exports a formatted multi-sheet Excel report ready for sustainability disclosure.
 
-The core objective of this project is to automate the ingestion, cleaning, and standardization of fragmented, non-standardized facility-level consumption data, compute audited corporate greenhouse gas (GHG) footprints (Scope 1 & Scope 2), and generate financial-grade, structured reporting assets ready for sustainability disclosures.
+The project simulates a realistic corporate scenario: three plant managers submit separate Excel files with inconsistent formats, typos, and missing values. The pipeline makes the data reliable before any environmental metric is calculated — because errors in source data propagate silently into emission totals unless caught explicitly.
 
 ---
 
 ## Data Pipeline Architecture
 
-The pipeline processes messy, multi-facility raw data through a standardized three-tier ETL (Extract, Transform, Load) architecture implemented in Python.
+The pipeline follows a standard ETL structure across four phases.
 
-### 1. Data Ingestion & Inconsistent Input Management
-The pipeline simulates a realistic corporate environment where data is received from separate, decoupled operational facilities (e.g., `consumi_milano.xlsx`, `consumi_lione.xlsx`). Input data intentionally contains common human-entry anomalies to test pipeline resilience:
-* **Structural Flaws:** Missing records, blank rows, and unformatted data blocks.
-* **Temporal Inconsistencies:** Divergent datetime formats (e.g., mixing `DD/MM/YYYY` with `YYYY-MM-DD`).
-* **Categorical Discrepancies:** Mixed casing and non-standardized units of measurement for identical metrics (e.g., `kwh`, `kWh`, `KWh`).
+### Phase 1 — Data Ingestion & Exploration
 
-### 2. Core Python Processing Module
-* **Extraction & Standardization (`pandas`):** Consolidates isolated multi-facility ledgers into a single, cohesive enterprise-wide DataFrame. The ingestion engine programmatically enforces lower-case string normalization, drops null rows missing critical quantitative values, and resolves temporal schema mutations into a unified datetime index.
-* **GHG Emission Quantification (ESG Logic):** Maps consumption data against an integrated database of localized, regulatory emission factors (e.g., ISPRA for Italian grid electricity, DEFRA for stationary combustion fuels). The computation engine isolates active variables, applies the respective multipliers, and appends a computed `Emissioni_kgCO2e` attribute across thousands of transactions deterministically.
+The three raw facility files (`consumi_milano.xlsx`, `consumi_lione.xlsx`, `consumi_roma.xlsx`) are loaded and assessed before any transformation is applied. The initial inspection covers shape, data types, missing value percentages, and raw sample rows. An automated **Sweetviz** HTML report is generated for each file on first run to surface distributions and anomalies visually.
 
-### 3. Audit-Ready Financial Export (`openpyxl` / `xlsxwriter`)
-Rather than outputting raw, flat CSV strings, the pipeline generates a highly formatted, multi-tab executive asset named `Report_Emissioni_2026.xlsx`:
-* **`Sintesi` (Executive Summary Tab):** An automated programmatic pivot table aggregation illustrating total emissions cross-referenced by specific Facility and GHG Protocol Scope (Scope 1 for direct fuel combustion, Scope 2 for indirect purchased electricity).
-* **`Dati Puliti` (Granular Audit Trail Tab):** The complete, standardized transaction ledger with embedded localized emission factors and calculated carbon values, ensuring full traceability for external assurance auditors.
+Input data intentionally contains common real-world entry problems:
 
----
+- Blank rows and fully empty records
+- Mixed date formats (`DD/MM/YYYY`, `YYYY-MM-DD`, `DD/MM/YY`)
+- Inconsistent unit labels for the same measurement (`kwh`, `kWh`, `KWh`, `kilowattora`)
+- Mixed casing and abbreviations in category names (`ENERGIA`, `energia elettrica`, `Riscald.`)
+- Pseudo-null strings (`N/D`, `-`, `?`, `da definire`) instead of actual `NaN`
 
-## Roadmap & Future Enhancements
+### Phase 2 — Data Cleaning & Standardisation
 
-To expand the scalability and sophistication of this environment, the following modules are currently under active development:
+Each file goes through a multi-step cleaning pipeline before merging:
 
-### Milestone A: Data Quality Assurance & Anomaly Detection
-* **Objective:** Implement an automated input-validation layer to mitigate human reporting errors prior to calculation.
-* **Mechanism:** A statistical threshold engine evaluating rolling facility historical consumption. If a newly ingested monthly metric deviates by over +50% from the facility's historical moving average, the pipeline halts execution for that row and isolates the anomaly inside a dedicated `error_log.txt` asset for manual data-assurance remediation.
+- **Column normalisation** — headers are stripped and title-cased to prevent misalignment on concatenation
+- **Text standardisation** — categories, resource names, and units are mapped to canonical forms via lookup dictionaries defined in `config.py`
+- **Pseudo-null replacement** — non-standard missing value strings are replaced with `NaN`
+- **Missing value inference** — where `Categoria` is missing but `Risorsa` uniquely determines it, the value is filled automatically
+- **Invalid quantity removal** — rows with `Quantità ≤ 0` are dropped
+- **Unit validation** — rows where the recorded unit does not match the expected unit for that resource are removed
+- **Duplicate removal** — exact duplicate rows are dropped
+- **Date parsing** — all date format variants are parsed to a consistent `date` type using `pd.to_datetime(format='mixed', dayfirst=True)`
 
-### Milestone B: External ESG API Integration
-* **Objective:** Replace static internal coefficient dictionaries with live, real-time external data queries.
-* **Mechanism:** Refactor the calculation engine to connect directly to external carbon intelligence APIs (e.g., Climatiq). This enables dynamic retrieval of dynamically adjusted, country-specific, and year-specific emission factors programmatically via authenticated HTTPS requests.
+After cleaning, the three DataFrames are concatenated with an `Impianto` tracking column into a single master DataFrame.
 
-### Milestone C: Interactive Analytical Dashboard
-* **Objective:** Transition the reporting layer from static spreadsheets to dynamic, interactive management reporting utilities.
-* **Mechanism:** Build a localized browser-based interface using `Streamlit`. This application layer will allow non-technical stakeholder executives to upload raw facility spreadsheets via a drag-and-drop UI and instantly render interactive data visualizations (e.g., programmatic categorical pie charts, temporal trend bars) showing enterprise-level carbon intensity.
+**Outlier removal (IQR method):** Per-resource boxplots are used as a visual diagnostic, followed by IQR-based removal (threshold 1.5×) for four resources: `Gas Naturale`, `Elettricità`, `Gas refrigerante R410A`, and `Benzina`. `Rifiuti speciali` is explicitly excluded — its high values are operationally plausible and not attributable to data entry errors. This distinction between a statistical outlier and a genuine extreme value is documented in the notebook.
 
----
+### Phase 3 — GHG Emission Quantification
 
-## Technology Stack
+Emission factors are applied record by record to compute `kgCO₂e`:
 
-* **Language:** Python 3.10+
-* **Data Manipulation:** Pandas
-* **Spreadsheet Engineering:** Openpyxl / Xlsxwriter
-* **Environment Management:** Virtualenv / Pipenv
+```
+Emissions (kgCO₂e) = Quantity × Emission Factor
+```
+
+Factors are centralised in `config.py` and sourced from established regulatory references:
+
+| Resource | Factor | Unit | Source |
+|---|---|---|---|
+| Natural Gas | 0.202 | kgCO₂e / m³ | GHG Protocol / DEFRA 2024 |
+| Diesel | 0.267 | kgCO₂e / litre | GHG Protocol / DEFRA 2024 |
+| Petrol | 0.249 | kgCO₂e / litre | GHG Protocol / DEFRA 2024 |
+| Biomass | 0.0 | kgCO₂e / kg | ISPRA (carbon-neutral convention) |
+| Refrigerant R410A | 2088.0 | kgCO₂e / kg | GWP100, IPCC AR5 |
+| Water supply | 0.149 | kgCO₂e / m³ | DEFRA 2024 |
+| Special waste | 0.616 | kgCO₂e / kg | DEFRA 2024 |
+| Municipal waste | 0.467 | kgCO₂e / kg | DEFRA 2024 |
+| Electricity — IT (Milano, Roma) | 0.233 | kgCO₂e / kWh | ISPRA 2023 |
+| Electricity — FR (Lione) | 0.052 | kgCO₂e / kWh | ADEME / RTE 2022–2024 |
+
+Electricity uses location-based factors split by city: the French grid (dominated by nuclear) is roughly 4.5× cleaner than the Italian mix, so applying a single national factor would significantly misrepresent Lione's footprint.
+
+The resources in this dataset span **Scope 1** (direct combustion and fugitive refrigerant emissions), **Scope 2** (purchased electricity), and elements commonly reported alongside **Scope 3** (water, waste).
+
+### Phase 4 — Audit-Ready Excel Export
+
+A formatted multi-sheet workbook is generated using `pandas` for data writing and `openpyxl` for formatting:
+
+| Sheet | Content |
+|---|---|
+| `Sintesi_Globale` | Pivot table: total kgCO₂e by facility × category × year, with grand totals |
+| `Sintesi_Milano` | Same pivot, Milano only |
+| `Sintesi_Lione` | Same pivot, Lione only |
+| `Sintesi_Roma` | Same pivot, Roma only |
+| `Dettaglio_emissioni` | Full row-level audit trail with emission factors and calculated values |
+
+The detail sheet ensures full traceability — every number in the summary tabs can be traced back to a specific consumption record. Formatting includes auto-fitted column widths, `#,##0.00` number format, `DD/MM/YYYY` date format, alignment by column type, and bold styling for total rows and columns.
+
+
+## Tech Stack
+
+- **Python 3.x**
+- **pandas** — data loading, cleaning, transformation, pivot tables
+- **numpy** — null replacement and numerical operations
+- **openpyxl** — Excel formatting
+- **matplotlib** — boxplot visualisations for outlier analysis
+- **sweetviz** — automated EDA reports
+
+
+## Possible Extensions
+
+A few directions this pipeline could be expanded in the future:
+
+**Anomaly detection layer.** Before calculating emissions, a validation step could flag any consumption record that deviates significantly from a facility's historical moving average (e.g. >50% above the trailing 12-month mean). Anomalous rows would be isolated in an `error_log.txt` for manual review rather than silently dropped or included.
+
+**Live emission factor API.** The static dictionaries in `config.py` could be replaced with real-time queries to a carbon intelligence API such as [Climatiq](https://www.climatiq.io/), which provides country-specific and year-specific factors updated continuously. This would eliminate the need to manually update the config file each year.
+
+**Interactive Streamlit dashboard.** The static Excel report could be complemented with a browser-based interface built in `Streamlit`, allowing non-technical stakeholders to upload facility files directly and explore emission breakdowns through interactive charts — without needing to run the notebook.
